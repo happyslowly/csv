@@ -11,6 +11,7 @@ fn parse_args() {
     let mut opts = Options::new();
     opts.optflag("l", "list", "list header");
     opts.optopt("d", "delimiter", "specify the delimiter", "DELIM");
+    opts.optopt("n", "top", "select top N record", "TOPN");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -26,10 +27,13 @@ fn parse_args() {
         std::process::exit(1);
     }
 
+    let delim = matches.opt_str("d");
+    let top_n = matches.opt_str("n");
+
     if matches.opt_present("l") {
-        csv::list_headers(&matches.free[0]);
+        csv::list_headers(&matches.free[0], delim);
     } else {
-        csv::list_columns(&matches.free[0], &matches.free[1..]);
+        csv::list_columns(&matches.free[0], &matches.free[1..], delim, top_n);
     }
 }
 
