@@ -1,46 +1,45 @@
-extern crate csv;
-extern crate getopts;
+use csv::Csv;
+use std::path::PathBuf;
+use structopt::StructOpt;
 
-use getopts::Options;
-use std::env;
+#[derive(StructOpt, Debug)]
+#[structopt(name = "csv", about = "A tool to read CSV files")]
+struct Opt {
+    #[structopt(short, long, help = "list header")]
+    list: bool,
 
-fn parse_args() {
-    let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
+    #[structopt(short, long, default_value = "\x07", help = "specify the delimiter")]
+    delimiter: String,
 
-    let mut opts = Options::new();
-    opts.optflag("l", "list", "list header");
-    opts.optopt("d", "delimiter", "specify the delimiter", "DELIM");
-    opts.optopt("n", "top", "select top N record", "TOPN");
+    #[structopt(
+        short = "n",
+        long = "top",
+        default_value = "-1",
+        help = "select top N records"
+    )]
+    top: isize,
 
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => {
-            println!("error: {}", f);
-            print_usage(&program);
-            std::process::exit(1);
-        }
-    };
+    #[structopt(name = "FILE", parse(from_os_str))]
+    file_name: PathBuf,
 
-    if matches.free.is_empty() {
-        print_usage(&program);
-        std::process::exit(1);
-    }
-
-    let delim = matches.opt_str("d");
-    let top_n = matches.opt_str("n");
-
-    if matches.opt_present("l") {
-        csv::list_headers(&matches.free[0], delim);
-    } else {
-        csv::list_columns(&matches.free[0], &matches.free[1..], delim, top_n);
-    }
-}
-
-fn print_usage(program: &str) {
-    println!("\nusage: {} [-l] <file> [column1] [column2] [...]", program);
+    #[structopt(name = "COLUMNS", required_unless("list"))]
+    columns: Vec<String>,
 }
 
 fn main() {
-    parse_args();
+    let opt = Opt::from_args();
+    let csv = Csv::from(&opt.file_name, &opt.delimiter);
+
+    match csv {
+        Ok(mut csv) => {
+            if opt.list {
+                csv.list_header();
+            } else {
+                csv.list_columns(&opt.columns, opt.top);
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+        }
+    };
 }

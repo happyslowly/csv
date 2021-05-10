@@ -1,87 +1,88 @@
-use std::fs::File;
+use std::error::Error;
+use std::fmt::Display;
 use std::io;
 use std::io::BufRead;
+use std::{fs::File, path::PathBuf};
 
-const DEFAULT_DELIM: &str = "\x07";
+pub struct Csv<'a> {
+    data: Data,
+    delimiter: &'a str,
+}
 
-struct Csv {
-    header: String,
+struct Data {
+    columns: Vec<String>,
     lines: io::Lines<io::BufReader<File>>,
-    delim: String,
 }
 
-fn read_lines(path: &str) -> io::Result<io::Lines<io::BufReader<File>>> {
-    let file = File::open(path)?;
-    Ok(io::BufReader::new(file).lines())
-}
-
-impl Csv {
-    fn load(path: &str, delim: Option<String>) -> Option<Csv> {
-        if let Ok(mut lines) = read_lines(path) {
-            if let Some(Ok(header)) = lines.next() {
-                return Some(Csv {
-                    header,
-                    lines,
-                    delim: delim.unwrap_or(DEFAULT_DELIM.to_string()),
-                });
+impl<'a> Csv<'a> {
+    pub fn from(path: &PathBuf, delimiter: &'a str) -> Result<Self, Box<dyn Error>> {
+        match Self::read_lines(path) {
+            Ok(mut lines) => {
+                let columns;
+                if let Some(Ok(header)) = lines.next() {
+                    columns = header.split(delimiter).map(String::from).collect();
+                } else {
+                    columns = vec![];
+                }
+                Ok(Csv {
+                    data: Data { columns, lines },
+                    delimiter,
+                })
             }
-        }
-        None
-    }
-}
-
-pub fn list_headers(path: &str, delim: Option<String>) {
-    if let Some(csv) = Csv::load(path, delim) {
-        let names: Vec<&str> = csv.header.split(&csv.delim).collect();
-        for n in names {
-            println!("{}", n);
+            Err(e) => Err(e.into()),
         }
     }
-}
 
-pub fn list_columns(path: &str, selected: &[String], delim: Option<String>, top_n: Option<String>) {
-    if let Some(csv) = Csv::load(path, delim) {
-        let names: Vec<&str> = csv.header.split(&csv.delim).collect();
-        let indexes = get_indexes(&names, selected);
-        print_by_indexes(&names, &indexes);
-        let top_n = top_n
-            .unwrap_or("-1".to_string())
-            .parse::<i32>()
-            .unwrap_or(-1);
-        let mut i = 0;
-        for data in csv.lines {
-            i += 1;
-            if top_n < i && top_n != -1 {
-                break;
-            }
-            if let Ok(data) = data {
-                let data: Vec<&str> = data.split(&csv.delim).collect();
-                print_by_indexes(&data, &indexes);
-            }
+    pub fn list_header(&self) {
+        for c in &self.data.columns {
+            println!("{}", c);
         }
     }
-}
 
-fn get_indexes(columns: &Vec<&str>, selected: &[String]) -> Vec<usize> {
-    let mut indexes = vec![];
-    if selected.is_empty() {
-        indexes = (0..columns.len()).collect();
-    } else {
-        for sel in selected {
-            for (i, col) in columns.iter().enumerate() {
-                if sel == col {
-                    indexes.push(i);
+    pub fn list_columns(&mut self, selected: &[String], top_n: isize) {
+        if self.data.columns.len() > 0 {
+            let indexes = self.get_indexes(selected);
+            Self::print_by_indexes(&self.data.columns, &indexes);
+            let mut i = 0;
+            for line in &mut self.data.lines {
+                i += 1;
+                if top_n < i && top_n != -1 {
+                    break;
+                }
+                if let Ok(line) = line {
+                    let line: Vec<&str> = line.split(self.delimiter).collect();
+                    Self::print_by_indexes(&line, &indexes);
                 }
             }
         }
     }
 
-    indexes
-}
-
-fn print_by_indexes(data: &Vec<&str>, indexes: &Vec<usize>) {
-    for i in indexes {
-        print!("{}\t", data[*i])
+    fn read_lines(path: &PathBuf) -> io::Result<io::Lines<io::BufReader<File>>> {
+        let file = File::open(path.as_path())?;
+        Ok(io::BufReader::new(file).lines())
     }
-    println!();
+
+    fn get_indexes(&self, selected: &[String]) -> Vec<usize> {
+        let mut indexes = vec![];
+        if selected.is_empty() {
+            indexes = (0..self.data.columns.len()).collect();
+        } else {
+            for sel in selected {
+                for (i, col) in self.data.columns.iter().enumerate() {
+                    if sel == col {
+                        indexes.push(i);
+                    }
+                }
+            }
+        }
+
+        indexes
+    }
+
+    fn print_by_indexes<T: Display + AsRef<str>>(line: &[T], indexes: &Vec<usize>) {
+        for i in indexes {
+            print!("{}\t", line[*i])
+        }
+        println!();
+    }
 }
