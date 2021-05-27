@@ -1,7 +1,6 @@
 use std::error::Error;
-use std::fmt::Display;
 use std::io;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::{fs::File, path::PathBuf};
 
 pub struct Csv<'a> {
@@ -12,6 +11,18 @@ pub struct Csv<'a> {
 struct Data {
     columns: Vec<String>,
     lines: io::Lines<io::BufReader<File>>,
+}
+
+macro_rules! print_line {
+    ($($arg:tt)*) => {
+        let mut stdout = io::stdout();
+        if let Err(e) = writeln!(&mut stdout, $($arg)*) {
+            if e.kind() != io::ErrorKind::BrokenPipe {
+                eprintln!("{}", e);
+            }
+            return;
+        }
+    };
 }
 
 impl<'a> Csv<'a> {
@@ -35,14 +46,22 @@ impl<'a> Csv<'a> {
 
     pub fn list_header(&self) {
         for c in &self.data.columns {
-            println!("{}", c);
+            print_line!("{}", c);
         }
     }
 
     pub fn list_columns(&mut self, selected: &[String], top_n: isize) {
         if self.data.columns.len() > 0 {
             let indexes = self.get_indexes(selected);
-            Self::print_by_indexes(&self.data.columns, &indexes);
+            Self::print_by_indexes(
+                &self
+                    .data
+                    .columns
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<&str>>(),
+                &indexes,
+            );
             let mut i = 0;
             for line in &mut self.data.lines {
                 i += 1;
@@ -51,7 +70,11 @@ impl<'a> Csv<'a> {
                 }
                 if let Ok(line) = line {
                     let line: Vec<&str> = line.split(self.delimiter).collect();
-                    Self::print_by_indexes(&line, &indexes);
+                    if let Some(ek) = Self::print_by_indexes(&line, &indexes) {
+                        if ek == io::ErrorKind::BrokenPipe {
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -79,10 +102,13 @@ impl<'a> Csv<'a> {
         indexes
     }
 
-    fn print_by_indexes<T: Display + AsRef<str>>(line: &[T], indexes: &Vec<usize>) {
-        for i in indexes {
-            print!("{}\t", line[*i])
+    fn print_by_indexes(line: &[&str], indexes: &Vec<usize>) -> Option<io::ErrorKind> {
+        let content = indexes.iter().map(|i| line[*i]).collect::<Vec<_>>();
+        let mut stdout = io::stdout();
+        if let Err(e) = writeln!(&mut stdout, "{}", content.join("\t")) {
+            Some(e.kind())
+        } else {
+            None
         }
-        println!();
     }
 }
