@@ -16,8 +16,7 @@ struct Data {
 
 fn print_line(s: &String) -> Result<()> {
     let stdout = io::stdout();
-    let handle = stdout.lock();
-    let mut handle = io::BufWriter::new(handle);
+    let mut handle = stdout.lock();
     writeln!(&mut handle, "{}", s).with_context(|| format!("Cannot write to STDOUT"))
 }
 
